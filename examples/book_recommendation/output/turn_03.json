@@ -1,0 +1,148 @@
+{
+  "turn_index": 3,
+  "add_episode_result": {
+    "episode": {
+      "uuid": "eac407b3-e4f8-4d85-a802-da3c880a796c",
+      "name": "chat_turn_3",
+      "content": "프로젝트 헤일메리랑 클라라와 태양은 재미있게 읽었어. 비슷한 결의 추천을 받고 싶어.",
+      "source": "message",
+      "source_description": "book recommendation chat",
+      "valid_at": "2026-06-06T09:41:04.356822+00:00"
+    },
+    "nodes": [
+      {
+        "uuid": "3c9ac253-da48-49b9-96d3-b6c071605e27",
+        "name": "프로젝트 헤일메리",
+        "labels": [
+          "Entity"
+        ],
+        "summary": "프로젝트 헤일메리와 클라라와 태양은 비슷한 결의 작품이다.",
+        "attributes": {}
+      },
+      {
+        "uuid": "a44010e8-5b30-4bab-ba7d-ce47bed69b69",
+        "name": "클라라와 태양",
+        "labels": [
+          "Entity"
+        ],
+        "summary": "프로젝트 헤일메리와 클라라와 태양은 비슷한 결의 작품이다.",
+        "attributes": {}
+      }
+    ],
+    "edges": [
+      {
+        "uuid": "c178ad06-e243-487e-b7a3-862847fd810c",
+        "name": "HAS_SIMILAR_TONE_WITH",
+        "fact": "프로젝트 헤일메리와 클라라와 태양은 비슷한 결의 작품이다.",
+        "source_node_uuid": "3c9ac253-da48-49b9-96d3-b6c071605e27",
+        "target_node_uuid": "a44010e8-5b30-4bab-ba7d-ce47bed69b69",
+        "episodes": [
+          "eac407b3-e4f8-4d85-a802-da3c880a796c"
+        ],
+        "valid_at": "2026-06-06T09:41:04+00:00",
+        "invalid_at": null
+      }
+    ],
+    "episodic_edges": [
+      {
+        "uuid": "9f7a8139-b179-41f2-82f2-ba6b9350fa78",
+        "source_node_uuid": "eac407b3-e4f8-4d85-a802-da3c880a796c",
+        "target_node_uuid": "3c9ac253-da48-49b9-96d3-b6c071605e27"
+      },
+      {
+        "uuid": "5e6473fa-0a08-4282-8b50-bf8bf71ca731",
+        "source_node_uuid": "eac407b3-e4f8-4d85-a802-da3c880a796c",
+        "target_node_uuid": "a44010e8-5b30-4bab-ba7d-ce47bed69b69"
+      }
+    ]
+  },
+  "graph_snapshot": {
+    "episodes": [
+      {
+        "uuid": "53b91667-5748-4a7c-89a9-2635516b8c95",
+        "name": "chat_turn_1",
+        "content": "나는 감정선이 진한 SF 소설을 좋아해. 너무 어렵지 않았으면 좋겠어.",
+        "valid_at": "2026-06-06T09:39:04.356822000+00:00"
+      },
+      {
+        "uuid": "4177349f-188e-4257-a8f3-fb6065337460",
+        "name": "chat_turn_2",
+        "content": "분위기는 너무 우울하거나 디스토피아적인 건 피하고 싶어. 천천히 몰입되는 전개가 좋아.",
+        "valid_at": "2026-06-06T09:40:04.356822000+00:00"
+      },
+      {
+        "uuid": "eac407b3-e4f8-4d85-a802-da3c880a796c",
+        "name": "chat_turn_3",
+        "content": "프로젝트 헤일메리랑 클라라와 태양은 재미있게 읽었어. 비슷한 결의 추천을 받고 싶어.",
+        "valid_at": "2026-06-06T09:41:04.356822000+00:00"
+      }
+    ],
+    "mentions": [
+      {
+        "episode": "chat_turn_1",
+        "entity": "감정선이 진한 SF 소설",
+        "labels": [
+          "Entity"
+        ]
+      },
+      {
+        "episode": "chat_turn_1",
+        "entity": "나는",
+        "labels": [
+          "Entity"
+        ]
+      },
+      {
+        "episode": "chat_turn_2",
+        "entity": "분위기",
+        "labels": [
+          "Entity"
+        ]
+      },
+      {
+        "episode": "chat_turn_3",
+        "entity": "클라라와 태양",
+        "labels": [
+          "Entity"
+        ]
+      },
+      {
+        "episode": "chat_turn_3",
+        "entity": "프로젝트 헤일메리",
+        "labels": [
+          "Entity"
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "source": "나는",
+        "source_labels": [
+          "Entity"
+        ],
+        "relation_name": "LIKES",
+        "fact": "나는 감정선이 진한 SF 소설을 좋아한다",
+        "target": "감정선이 진한 SF 소설",
+        "target_labels": [
+          "Entity"
+        ],
+        "valid_at": "2026-06-06T09:39:04.356822000+00:00",
+        "invalid_at": null
+      },
+      {
+        "source": "프로젝트 헤일메리",
+        "source_labels": [
+          "Entity"
+        ],
+        "relation_name": "HAS_SIMILAR_TONE_WITH",
+        "fact": "프로젝트 헤일메리와 클라라와 태양은 비슷한 결의 작품이다.",
+        "target": "클라라와 태양",
+        "target_labels": [
+          "Entity"
+        ],
+        "valid_at": "2026-06-06T09:41:04.000000000+00:00",
+        "invalid_at": null
+      }
+    ]
+  }
+}

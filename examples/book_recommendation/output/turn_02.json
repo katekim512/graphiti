@@ -1,0 +1,87 @@
+{
+  "turn_index": 2,
+  "add_episode_result": {
+    "episode": {
+      "uuid": "4177349f-188e-4257-a8f3-fb6065337460",
+      "name": "chat_turn_2",
+      "content": "분위기는 너무 우울하거나 디스토피아적인 건 피하고 싶어. 천천히 몰입되는 전개가 좋아.",
+      "source": "message",
+      "source_description": "book recommendation chat",
+      "valid_at": "2026-06-06T09:40:04.356822+00:00"
+    },
+    "nodes": [
+      {
+        "uuid": "90f028bb-61a0-4e6e-b95b-9f3f53aeab8e",
+        "name": "분위기",
+        "labels": [
+          "Entity"
+        ],
+        "summary": "감정선이 진한 SF 소설을 선호하며, 너무 어렵지 않고 천천히 몰입되는 전개를 좋아한다. 우울하거나 디스토피아적인 분위기를 피하고 싶다.",
+        "attributes": {}
+      }
+    ],
+    "edges": [],
+    "episodic_edges": [
+      {
+        "uuid": "ec7651f0-49b0-42ae-8c45-8a15918ce57f",
+        "source_node_uuid": "4177349f-188e-4257-a8f3-fb6065337460",
+        "target_node_uuid": "90f028bb-61a0-4e6e-b95b-9f3f53aeab8e"
+      }
+    ]
+  },
+  "graph_snapshot": {
+    "episodes": [
+      {
+        "uuid": "53b91667-5748-4a7c-89a9-2635516b8c95",
+        "name": "chat_turn_1",
+        "content": "나는 감정선이 진한 SF 소설을 좋아해. 너무 어렵지 않았으면 좋겠어.",
+        "valid_at": "2026-06-06T09:39:04.356822000+00:00"
+      },
+      {
+        "uuid": "4177349f-188e-4257-a8f3-fb6065337460",
+        "name": "chat_turn_2",
+        "content": "분위기는 너무 우울하거나 디스토피아적인 건 피하고 싶어. 천천히 몰입되는 전개가 좋아.",
+        "valid_at": "2026-06-06T09:40:04.356822000+00:00"
+      }
+    ],
+    "mentions": [
+      {
+        "episode": "chat_turn_1",
+        "entity": "감정선이 진한 SF 소설",
+        "labels": [
+          "Entity"
+        ]
+      },
+      {
+        "episode": "chat_turn_1",
+        "entity": "나는",
+        "labels": [
+          "Entity"
+        ]
+      },
+      {
+        "episode": "chat_turn_2",
+        "entity": "분위기",
+        "labels": [
+          "Entity"
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "source": "나는",
+        "source_labels": [
+          "Entity"
+        ],
+        "relation_name": "LIKES",
+        "fact": "나는 감정선이 진한 SF 소설을 좋아한다",
+        "target": "감정선이 진한 SF 소설",
+        "target_labels": [
+          "Entity"
+        ],
+        "valid_at": "2026-06-06T09:39:04.356822000+00:00",
+        "invalid_at": null
+      }
+    ]
+  }
+}

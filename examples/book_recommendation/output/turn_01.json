@@ -1,0 +1,101 @@
+{
+  "turn_index": 1,
+  "add_episode_result": {
+    "episode": {
+      "uuid": "53b91667-5748-4a7c-89a9-2635516b8c95",
+      "name": "chat_turn_1",
+      "content": "나는 감정선이 진한 SF 소설을 좋아해. 너무 어렵지 않았으면 좋겠어.",
+      "source": "message",
+      "source_description": "book recommendation chat",
+      "valid_at": "2026-06-06T09:39:04.356822+00:00"
+    },
+    "nodes": [
+      {
+        "uuid": "813b671c-c0de-42fa-8c17-71bf85850a83",
+        "name": "나는",
+        "labels": [
+          "Entity"
+        ],
+        "summary": "나는 감정선이 진한 SF 소설을 좋아한다",
+        "attributes": {}
+      },
+      {
+        "uuid": "23377433-4334-43d7-aa6c-5312c1b01277",
+        "name": "감정선이 진한 SF 소설",
+        "labels": [
+          "Entity"
+        ],
+        "summary": "나는 감정선이 진한 SF 소설을 좋아한다",
+        "attributes": {}
+      }
+    ],
+    "edges": [
+      {
+        "uuid": "41b9514d-c50e-49c8-b371-a3f5213c8ef1",
+        "name": "LIKES",
+        "fact": "나는 감정선이 진한 SF 소설을 좋아한다",
+        "source_node_uuid": "813b671c-c0de-42fa-8c17-71bf85850a83",
+        "target_node_uuid": "23377433-4334-43d7-aa6c-5312c1b01277",
+        "episodes": [
+          "53b91667-5748-4a7c-89a9-2635516b8c95"
+        ],
+        "valid_at": "2026-06-06T09:39:04.356822+00:00",
+        "invalid_at": null
+      }
+    ],
+    "episodic_edges": [
+      {
+        "uuid": "5ecd73c0-ffd0-4542-a94d-f4b3117fcfcf",
+        "source_node_uuid": "53b91667-5748-4a7c-89a9-2635516b8c95",
+        "target_node_uuid": "813b671c-c0de-42fa-8c17-71bf85850a83"
+      },
+      {
+        "uuid": "7010b9e3-69d0-4270-afed-b11b041b2c0d",
+        "source_node_uuid": "53b91667-5748-4a7c-89a9-2635516b8c95",
+        "target_node_uuid": "23377433-4334-43d7-aa6c-5312c1b01277"
+      }
+    ]
+  },
+  "graph_snapshot": {
+    "episodes": [
+      {
+        "uuid": "53b91667-5748-4a7c-89a9-2635516b8c95",
+        "name": "chat_turn_1",
+        "content": "나는 감정선이 진한 SF 소설을 좋아해. 너무 어렵지 않았으면 좋겠어.",
+        "valid_at": "2026-06-06T09:39:04.356822000+00:00"
+      }
+    ],
+    "mentions": [
+      {
+        "episode": "chat_turn_1",
+        "entity": "감정선이 진한 SF 소설",
+        "labels": [
+          "Entity"
+        ]
+      },
+      {
+        "episode": "chat_turn_1",
+        "entity": "나는",
+        "labels": [
+          "Entity"
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "source": "나는",
+        "source_labels": [
+          "Entity"
+        ],
+        "relation_name": "LIKES",
+        "fact": "나는 감정선이 진한 SF 소설을 좋아한다",
+        "target": "감정선이 진한 SF 소설",
+        "target_labels": [
+          "Entity"
+        ],
+        "valid_at": "2026-06-06T09:39:04.356822000+00:00",
+        "invalid_at": null
+      }
+    ]
+  }
+}
