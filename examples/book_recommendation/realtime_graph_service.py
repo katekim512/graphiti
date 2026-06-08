@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -7,10 +8,12 @@ from pydantic import BaseModel, Field
 
 from graphiti_core import Graphiti
 from graphiti_core.driver.neo4j_driver import Neo4jDriver
-from graphiti_core.nodes import EpisodeType
+from graphiti_core.edges import EntityEdge
+from graphiti_core.nodes import EntityNode, EpisodeType
 from graphiti_core.prompts.models import Message
 from graphiti_core.search.search_config import SearchResults
 from graphiti_core.search.search_config_recipes import COMBINED_HYBRID_SEARCH_RRF
+from graphiti_core.utils.datetime_utils import utc_now
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 
 load_dotenv()
@@ -24,6 +27,30 @@ SAGA_NAME = 'book_reco_live_demo'
 PRIOR_KNOWLEDGE_SAGA_NAME = 'book_reco_prior_knowledge'
 
 graphiti: Graphiti | None = None
+
+TIME_PATTERN = re.compile(r'\b(?:19|20)\d{2}\b')
+TIME_KEYWORDS = [
+    '지금',
+    '현재',
+    '요즘',
+    '최근',
+    '작년',
+    '재작년',
+    '올해',
+    '내년',
+    '예전',
+    '당시',
+    '이번 달',
+    '지난 달',
+    '이번 주',
+    '지난 주',
+    'last year',
+    'this year',
+    'now',
+    'currently',
+    'recently',
+    'at the moment',
+]
 
 
 class Book(BaseModel):
@@ -44,6 +71,10 @@ class PacingPreference(BaseModel):
 
 class NegativePreference(BaseModel):
     """A disliked element or avoided constraint such as dystopian, too dark, horror, or dense prose."""
+
+
+class TimeContext(BaseModel):
+    """A temporal context such as now, currently, last year, this year, recent months, or a specific year/date."""
 
 
 class LikesBookEdge(BaseModel):
@@ -82,12 +113,17 @@ class LacksElementEdge(BaseModel):
     """A book lacks or avoids an unwanted element such as dystopian darkness."""
 
 
+class HasTimeContextEdge(BaseModel):
+    """An entity is associated with a specific time context or time-bound preference."""
+
+
 ENTITY_TYPES = {
     'Book': Book,
     'GenrePreference': GenrePreference,
     'TonePreference': TonePreference,
     'PacingPreference': PacingPreference,
     'NegativePreference': NegativePreference,
+    'TimeContext': TimeContext,
 }
 
 EDGE_TYPES = {
@@ -100,6 +136,7 @@ EDGE_TYPES = {
     'HAS_TONE': HasToneEdge,
     'HAS_PACING': HasPacingEdge,
     'LACKS_ELEMENT': LacksElementEdge,
+    'HAS_TIME_CONTEXT': HasTimeContextEdge,
 }
 
 EDGE_TYPE_MAP = {
@@ -108,10 +145,12 @@ EDGE_TYPE_MAP = {
     ('Entity', 'TonePreference'): ['PREFERS_TONE'],
     ('Entity', 'PacingPreference'): ['PREFERS_PACING'],
     ('Entity', 'NegativePreference'): ['AVOIDS_ELEMENT'],
+    ('Entity', 'TimeContext'): ['HAS_TIME_CONTEXT'],
     ('Book', 'GenrePreference'): ['HAS_GENRE'],
     ('Book', 'TonePreference'): ['HAS_TONE'],
     ('Book', 'PacingPreference'): ['HAS_PACING'],
     ('Book', 'NegativePreference'): ['LACKS_ELEMENT'],
+    ('Book', 'TimeContext'): ['HAS_TIME_CONTEXT'],
 }
 
 CUSTOM_EXTRACTION_INSTRUCTIONS = """
@@ -123,12 +162,19 @@ Extraction goals:
 - Extract preferred mood words as TonePreference.
 - Extract pacing preferences as PacingPreference.
 - Extract dislikes, avoided moods, and avoided subgenres as NegativePreference.
-- For book catalog entries, connect Book entities to genre, tone, pacing, and avoidance entities.
+- Extract explicit or relative temporal expressions as TimeContext when they change the meaning of a preference or fact.
+- For book knowledge entries, connect Book entities to genre, tone, pacing, avoidance, and time entities when relevant.
 - Prefer specific preference entities over vague nouns.
 - When the speaker is the user, preserve preference facts as explicit relations whenever possible.
-- Treat the user as a stable speaker entity and connect that speaker entity to preferences and books.
+- Treat the user as a stable speaker entity and connect that speaker entity to preferences, books, and time contexts.
 - If a relation matches one of the provided FACT_TYPES, prefer that exact relation type name.
 - Book titles should remain specific titles, never generalized to "book" or "novel".
+""".strip()
+
+STRUCTURED_PREFIX = """
+BOOK_RECOMMENDATION_PROFILE
+- Extract a stable user entity from first-person statements.
+- Interpret each line below as an explicit fact candidate.
 """.strip()
 
 
@@ -139,11 +185,28 @@ class GroundedRecommendation(BaseModel):
     supporting_node_indices: list[int] = Field(default_factory=list)
     supporting_episode_indices: list[int] = Field(default_factory=list)
 
-STRUCTURED_PREFIX = """
-BOOK_RECOMMENDATION_PROFILE
-- Extract a stable user entity from first-person statements.
-- Interpret each line below as an explicit fact candidate.
-""".strip()
+
+def extract_time_contexts(text: str) -> list[str]:
+    found: list[str] = []
+    lowered = text.lower()
+
+    for keyword in TIME_KEYWORDS:
+        keyword_lower = keyword.lower()
+        if keyword in text or keyword_lower in lowered:
+            found.append(keyword)
+
+    for match in TIME_PATTERN.finditer(text):
+        found.append(match.group(0))
+
+    deduped: list[str] = []
+    seen = set()
+    for item in found:
+        normalized = item.strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(item.strip())
+    return deduped
 
 
 def structure_episode_body(text: str) -> str:
@@ -165,6 +228,9 @@ def structure_episode_body(text: str) -> str:
         lines.append(f'- PACING_PREFERENCE_CANDIDATE: {raw}')
     if 'sf' in lower or 'sci-fi' in lower or 'genre' in lower or '장르' in raw:
         lines.append(f'- GENRE_PREFERENCE_CANDIDATE: {raw}')
+
+    for time_context in extract_time_contexts(raw):
+        lines.append(f'- TIME_CONTEXT_CANDIDATE: {time_context}')
 
     return '\n'.join(lines)
 
@@ -214,10 +280,13 @@ async def snapshot_graph(client: Graphiti) -> dict[str, Any]:
             r.uuid AS uuid,
             a.uuid AS source_uuid,
             a.name AS source,
+            labels(a) AS source_labels,
             r.name AS relation_name,
             r.fact AS fact,
             b.uuid AS target_uuid,
-            b.name AS target
+            b.name AS target,
+            labels(b) AS target_labels,
+            r.episodes AS episodes
         ORDER BY source, relation_name, target
         """
     )
@@ -226,6 +295,45 @@ async def snapshot_graph(client: Graphiti) -> dict[str, Any]:
         'mentions': [dict(record) for record in mention_records],
         'relations': [dict(record) for record in relation_records],
     }
+
+
+async def attach_time_contexts(
+    client: Graphiti,
+    nodes: list[EntityNode],
+    episode_uuid: str,
+    reference_time: datetime,
+    raw_text: str,
+) -> None:
+    time_contexts = extract_time_contexts(raw_text)
+    if not time_contexts:
+        return
+
+    source_node = next((node for node in nodes if node.name == 'user'), None)
+    if source_node is None:
+        source_node = next((node for node in nodes if 'Book' in node.labels), None)
+    if source_node is None and nodes:
+        source_node = nodes[0]
+    if source_node is None:
+        return
+
+    for time_context in time_contexts:
+        time_node = EntityNode(
+            name=time_context,
+            group_id=NEO4J_DATABASE,
+            labels=['TimeContext'],
+        )
+        time_edge = EntityEdge(
+            source_node_uuid=source_node.uuid,
+            target_node_uuid=time_node.uuid,
+            name='HAS_TIME_CONTEXT',
+            group_id=NEO4J_DATABASE,
+            fact=f'{source_node.name} is associated with the time context "{time_context}".',
+            episodes=[episode_uuid],
+            created_at=utc_now(),
+            valid_at=reference_time,
+            reference_time=reference_time,
+        )
+        await client.add_triplet(source_node, time_edge, time_node)
 
 
 async def add_prior_knowledge(text: str) -> dict[str, Any]:
@@ -253,6 +361,7 @@ async def add_prior_knowledge(text: str) -> dict[str, Any]:
         edge_type_map=EDGE_TYPE_MAP,
         custom_extraction_instructions=CUSTOM_EXTRACTION_INSTRUCTIONS,
     )
+    await attach_time_contexts(client, result.nodes, result.episode.uuid, result.episode.valid_at, text)
     snapshot_after = await snapshot_graph(client)
     return {
         'episode_uuid': result.episode.uuid,
@@ -263,19 +372,12 @@ async def add_prior_knowledge(text: str) -> dict[str, Any]:
 
 
 def build_grounding_context(search_results: SearchResults, question: str) -> list[Message]:
-    fact_lines = []
-    for index, edge in enumerate(search_results.edges):
-        fact_lines.append(f'FACT[{index}] name={edge.name} fact={edge.fact}')
-
-    node_lines = []
-    for index, node in enumerate(search_results.nodes):
-        node_lines.append(f'NODE[{index}] name={node.name} summary={node.summary}')
-
-    episode_lines = []
-    for index, episode in enumerate(search_results.episodes):
-        episode_lines.append(
-            f'EPISODE[{index}] source_description={episode.source_description} content={episode.content}'
-        )
+    fact_lines = [f'FACT[{index}] name={edge.name} fact={edge.fact}' for index, edge in enumerate(search_results.edges)]
+    node_lines = [f'NODE[{index}] name={node.name} summary={node.summary}' for index, node in enumerate(search_results.nodes)]
+    episode_lines = [
+        f'EPISODE[{index}] source_description={episode.source_description} content={episode.content}'
+        for index, episode in enumerate(search_results.episodes)
+    ]
 
     return [
         Message(
@@ -343,14 +445,10 @@ async def generate_grounded_answer(client: Graphiti, question: str) -> dict[str,
         'used_edge_uuids': [edge.uuid for edge in used_edges],
         'used_entity_uuids': sorted(
             {
-                edge.source_node_uuid
-                for edge in used_edges
-                if edge.source_node_uuid is not None
+                edge.source_node_uuid for edge in used_edges if edge.source_node_uuid is not None
             }
             | {
-                edge.target_node_uuid
-                for edge in used_edges
-                if edge.target_node_uuid is not None
+                edge.target_node_uuid for edge in used_edges if edge.target_node_uuid is not None
             }
             | {node.uuid for node in used_nodes}
         ),
@@ -394,6 +492,7 @@ async def add_chat_turn(text: str) -> dict[str, Any]:
         edge_type_map=EDGE_TYPE_MAP,
         custom_extraction_instructions=CUSTOM_EXTRACTION_INSTRUCTIONS,
     )
+    await attach_time_contexts(client, result.nodes, result.episode.uuid, result.episode.valid_at, text)
     snapshot_after = await snapshot_graph(client)
     grounded_answer = await generate_grounded_answer(client, text)
     return {
