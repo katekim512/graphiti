@@ -38,6 +38,8 @@ neo4j_password = os.environ.get('NEO4J_PASSWORD', 'password')
 
 CHAT_SAGA = 'Ecommerce product recommendation chat'
 EXIT_COMMANDS = {'/exit', '/quit', 'exit', 'quit'}
+RECOMMENDATION_FACT_LIMIT = 8
+SEARCH_CANDIDATE_LIMIT = 24
 
 
 class RecommendationResponse(BaseModel):
@@ -72,8 +74,15 @@ async def generate_recommendation(
     customer_message: str,
     conversation: list[str],
 ) -> str:
-    search_results = await client.search(customer_message, num_results=8)
-    graph_facts = [result.fact for result in search_results]
+    search_results = await client.search(
+        customer_message,
+        num_results=SEARCH_CANDIDATE_LIMIT,
+    )
+    graph_facts = [
+        result.fact
+        for result in search_results
+        if result.expired_at is None
+    ][:RECOMMENDATION_FACT_LIMIT]
 
     response = await client.llm_client.generate_response(
         [
@@ -82,6 +91,7 @@ async def generate_recommendation(
                 content=(
                     'You are SalesBot, a concise ecommerce product recommendation assistant. '
                     'Recommend only products supported by the supplied knowledge graph facts. '
+                    'Every supplied fact is currently valid; expired facts have been excluded. '
                     'Use known customer preferences, purchases, and allergies. Never recommend a '
                     'material the customer says they are allergic to. If the facts are '
                     'insufficient, ask one focused follow-up question instead of inventing '
