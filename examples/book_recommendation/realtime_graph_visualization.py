@@ -46,6 +46,48 @@ def get_entity_type(labels: list[str]) -> str:
     return 'Entity'
 
 
+def format_temporal_value(value: Any) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+
+    text = str(value)
+    if not text:
+        return ''
+    try:
+        return datetime.fromisoformat(text.replace('Z', '+00:00')).date().isoformat()
+    except ValueError:
+        return text[:10]
+
+
+def format_temporal_range(rel: dict[str, Any]) -> str:
+    valid_at = format_temporal_value(rel.get('valid_at'))
+    invalid_at = format_temporal_value(rel.get('invalid_at'))
+    if valid_at and invalid_at:
+        return f'{valid_at} -> {invalid_at}'
+    if valid_at:
+        return f'valid {valid_at}'
+    if invalid_at:
+        return f'invalid {invalid_at}'
+    return ''
+
+
+def format_temporal_tooltip(rel: dict[str, Any]) -> str:
+    lines = [
+        f'{rel.get("relation_name", "RELATES_TO")}: {rel.get("fact", "")}',
+        f'valid_at: {format_temporal_value(rel.get("valid_at")) or "unknown"}',
+        f'invalid_at: {format_temporal_value(rel.get("invalid_at")) or "active"}',
+    ]
+    reference_time = format_temporal_value(rel.get('reference_time'))
+    if reference_time:
+        lines.append(f'reference_time: {reference_time}')
+    created_at = format_temporal_value(rel.get('created_at'))
+    if created_at:
+        lines.append(f'created_at: {created_at}')
+    return '\n'.join(lines)
+
+
 def render_svg(snapshot: dict[str, Any], highlighted: dict[str, set[str]] | None = None) -> str:
     episodes = snapshot['episodes']
     mentions = snapshot['mentions']
@@ -131,11 +173,16 @@ def render_svg(snapshot: dict[str, Any], highlighted: dict[str, set[str]] | None
         sx, sy = entity_positions.get(rel['source'], (col_x[source_type], top))
         tx, ty = entity_positions.get(rel['target'], (col_x[target_type], top))
         is_highlighted = rel['uuid'] in highlighted_relation_uuids
+        temporal_range = format_temporal_range(rel)
+        is_invalidated = bool(format_temporal_value(rel.get('invalid_at')))
+        edge_color = '#8a99a8' if is_invalidated and not is_highlighted else '#d64545'
+        edge_opacity = '0.48' if is_invalidated and not is_highlighted else '0.88'
+        edge_dash = ' stroke-dasharray="8 7"' if is_invalidated else ''
         offset = 50 + (rel_index % 4) * 16
         control_x1 = sx + offset
         control_x2 = tx - offset
         parts.append(
-            f'<path d="M {sx} {sy} C {control_x1} {sy}, {control_x2} {ty}, {tx} {ty}" fill="none" stroke="{"#b42318" if is_highlighted else "#d64545"}" stroke-width="{"5" if is_highlighted else "2.5"}" marker-end="url(#arrow)" opacity="0.88" />'
+            f'<path d="M {sx} {sy} C {control_x1} {sy}, {control_x2} {ty}, {tx} {ty}" fill="none" stroke="{"#b42318" if is_highlighted else edge_color}" stroke-width="{"5" if is_highlighted else "2.5"}" marker-end="url(#arrow)" opacity="{edge_opacity}"{edge_dash}><title>{html.escape(format_temporal_tooltip(rel))}</title></path>'
         )
         label_x = (sx + tx) / 2
         label_y = (sy + ty) / 2 - 10 - (rel_index % 2) * 10
@@ -145,6 +192,13 @@ def render_svg(snapshot: dict[str, Any], highlighted: dict[str, set[str]] | None
         parts.append(
             f'<text x="{label_x}" y="{label_y}" text-anchor="middle" font-size="10" font-family="Menlo, monospace" fill="#9b1c1c">{html.escape(rel["relation_name"])}</text>'
         )
+        if is_highlighted and temporal_range:
+            parts.append(
+                f'<rect x="{label_x - 70}" y="{label_y + 6}" width="140" height="18" rx="8" ry="8" fill="#fff7ed" stroke="#fed7aa" opacity="0.96" />'
+            )
+            parts.append(
+                f'<text x="{label_x}" y="{label_y + 19}" text-anchor="middle" font-size="9" font-family="Menlo, monospace" fill="#9a3412">{html.escape(temporal_range)}</text>'
+            )
 
     for entity, (x, y) in entity_positions.items():
         entity_uuid = entity_uuid_by_name.get(entity)
