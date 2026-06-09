@@ -18,14 +18,15 @@ import asyncio
 import json
 import logging
 import os
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
+from graphiti_core.prompts.models import Message
 from graphiti_core.utils.bulk_utils import RawEpisode
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 
@@ -35,61 +36,160 @@ neo4j_uri = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
 neo4j_user = os.environ.get('NEO4J_USER', 'neo4j')
 neo4j_password = os.environ.get('NEO4J_PASSWORD', 'password')
 
+CHAT_SAGA = 'Ecommerce product recommendation chat'
+EXIT_COMMANDS = {'/exit', '/quit', 'exit', 'quit'}
+
+
+class RecommendationResponse(BaseModel):
+    message: str = Field(description='A concise response from the product recommendation assistant')
+
 
 def setup_logging():
-    # Create a logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)  # Set the logging level to INFO
-
-    # Create console handler and set level to INFO
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-
-    # Create formatter
-    formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-
-    # Add formatter to console handler
-    console_handler.setFormatter(formatter)
-
-    # Add console handler to logger
-    logger.addHandler(console_handler)
-
-    return logger
+    logging.basicConfig(level=logging.ERROR, force=True)
 
 
-shoe_conversation = [
-    "SalesBot: Hi, I'm Allbirds Assistant! How can I help you today?",
-    "John: Hi, I'm looking for a new pair of shoes.",
-    'SalesBot: Of course! What kind of material are you looking for?',
-    "John: I'm looking for shoes made out of wool",
-    """SalesBot: We have just what you are looking for, how do you like our Men's SuperLight Wool Runners 
-    - Dark Grey (Medium Grey Sole)? They use the SuperLight Foam technology.""",
-    """John: Oh, actually I bought those 2 months ago, but unfortunately found out that I was allergic to wool. 
-    I think I will pass on those, maybe there is something with a retro look that you could suggest?""",
-    """SalesBot: Im sorry to hear that! Would you be interested in Men's Couriers - 
-    (Blizzard Sole) model? We have them in Natural Black and Basin Blue colors""",
-    'John: Oh that is perfect, I LOVE the Natural Black color!. I will take those.',
-]
+async def add_chat_message(
+    client: Graphiti,
+    message_number: int,
+    speaker: str,
+    content: str,
+    previous_episode_uuid: str | None,
+) -> str:
+    result = await client.add_episode(
+        name=f'Chat message {message_number}',
+        episode_body=f'{speaker}: {content}',
+        source=EpisodeType.message,
+        reference_time=datetime.now(timezone.utc),
+        source_description='Live ecommerce product recommendation chat',
+        saga=CHAT_SAGA,
+        saga_previous_episode_uuid=previous_episode_uuid,
+    )
+    return result.episode.uuid
 
 
-async def add_messages(client: Graphiti):
-    for i, message in enumerate(shoe_conversation):
-        await client.add_episode(
-            name=f'Message {i}',
-            episode_body=message,
-            source=EpisodeType.message,
-            reference_time=datetime.now(timezone.utc),
-            source_description='Shoe conversation',
+async def generate_recommendation(
+    client: Graphiti,
+    customer_message: str,
+    conversation: list[str],
+) -> str:
+    search_results = await client.search(customer_message, num_results=8)
+    graph_facts = [result.fact for result in search_results]
+
+    response = await client.llm_client.generate_response(
+        [
+            Message(
+                role='system',
+                content=(
+                    'You are SalesBot, a concise ecommerce product recommendation assistant. '
+                    'Recommend only products supported by the supplied knowledge graph facts. '
+                    'Use known customer preferences, purchases, and allergies. Never recommend a '
+                    'material the customer says they are allergic to. If the facts are '
+                    'insufficient, ask one focused follow-up question instead of inventing '
+                    'product details.'
+                ),
+            ),
+            Message(
+                role='user',
+                content=f"""
+<RECENT_CONVERSATION>
+{json.dumps(conversation[-8:], ensure_ascii=False)}
+</RECENT_CONVERSATION>
+
+<CUSTOMER_MESSAGE>
+{customer_message}
+</CUSTOMER_MESSAGE>
+
+<KNOWLEDGE_GRAPH_FACTS>
+{json.dumps(graph_facts, ensure_ascii=False)}
+</KNOWLEDGE_GRAPH_FACTS>
+
+Reply naturally as SalesBot without adding a speaker prefix.
+""",
+            ),
+        ],
+        response_model=RecommendationResponse,
+        prompt_name='ecommerce.live_recommendation',
+    )
+    return RecommendationResponse(**response).message.strip()
+
+
+async def run_live_chat(client: Graphiti):
+    greeting = 'Hi, I can help you find a product from the Manybirds catalog.'
+    print('\n[Status] Building the initial chat graph...')
+
+    conversation = [f'SalesBot: {greeting}']
+    previous_episode_uuid = await add_chat_message(
+        client,
+        message_number=0,
+        speaker='SalesBot',
+        content=greeting,
+        previous_episode_uuid=None,
+    )
+
+    print('[Status] Initial chat graph complete.')
+    print(f'\nSalesBot: {greeting}')
+    print(
+        'Tell me what you need, including preferences such as material, color, size, or allergies.'
+    )
+    print('Type /exit to finish.\n')
+
+    message_number = 1
+
+    while True:
+        print('[Status] Waiting for your message.')
+        try:
+            customer_message = (await asyncio.to_thread(input, 'Customer: ')).strip()
+        except (EOFError, KeyboardInterrupt):
+            print('\nSalesBot: Thanks for chatting. Your conversation is stored in the graph.')
+            return
+
+        if not customer_message:
+            continue
+        if customer_message.lower() in EXIT_COMMANDS:
+            print('SalesBot: Thanks for chatting. Your conversation is stored in the graph.')
+            return
+
+        conversation.append(f'Customer: {customer_message}')
+        print('[Status] Building the graph from your message...')
+
+        previous_episode_uuid = await add_chat_message(
+            client,
+            message_number,
+            'Customer',
+            customer_message,
+            previous_episode_uuid,
         )
+        message_number += 1
+
+        print('[Status] Waiting for the recommendation response...')
+        recommendation = await generate_recommendation(client, customer_message, conversation)
+        conversation.append(f'SalesBot: {recommendation}')
+
+        print('[Status] Building the graph from the recommendation response...')
+        previous_episode_uuid = await add_chat_message(
+            client,
+            message_number,
+            'SalesBot',
+            recommendation,
+            previous_episode_uuid,
+        )
+        message_number += 1
+        print('[Status] Graph update complete.')
+        print(f'\nSalesBot: {recommendation}\n')
 
 
 async def main():
     setup_logging()
     client = Graphiti(neo4j_uri, neo4j_user, neo4j_password)
-    await clear_data(client.driver)
-    await client.build_indices_and_constraints()
-    await ingest_products_data(client)
-    await add_messages(client)
+    try:
+        print('[Status] Building the product knowledge graph...')
+        await clear_data(client.driver)
+        await client.build_indices_and_constraints()
+        await ingest_products_data(client)
+        print('[Status] Product knowledge graph complete.')
+        await run_live_chat(client)
+    finally:
+        await client.close()
 
 
 async def ingest_products_data(client: Graphiti):
@@ -120,4 +220,5 @@ async def ingest_products_data(client: Graphiti):
         )
 
 
-asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())
